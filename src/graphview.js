@@ -14,6 +14,10 @@ class Point {
         this.x -= p.x;
         this.y -= p.y;
     }
+    mul(x){
+        this.x *= x;
+        this.y *= x;
+    }
 }
 
 class Vertex  extends React.Component {
@@ -45,6 +49,7 @@ class VertexInfo {
         this.pos = new Point(pos.x,pos.y);
         this.id = id;
         this.text = this.id;
+        this.velocity = new Point(0, 0);
     }
 }
 
@@ -71,14 +76,55 @@ class Graph extends React.Component {
         this.handleVertexDragStart = this.handleVertexDragStart.bind(this);
         this.handleMouseMove = this.handleMouseMove.bind(this);
         this.handleReleaseVertex = this.handleReleaseVertex.bind(this);
-
+        this.updateVertexPos = this.updateVertexPos.bind(this);
         this.state = {
             vertices : [],
+            timerId : null,
             dragBeforePos : null,
             draggingVertex : null,
             dragTimerId : null
         };
     }
+    componentDidMount(){
+        this.setState({timerId:setInterval(this.updateVertexPos, 50)});
+    }
+    componentUnmount(){
+        clearInterval(this.state.timerId);
+    }
+    updateVertexPos(){
+        const coulomb = 10000.0, spring = 0.005, naturalLen = 200.0, deltaT = 0.5;
+        const vertices = this.state.vertices, edges = this.props.edges;
+        let fs = Array(vertices.length).fill(null);
+
+        for(let i = 0; vertices.length > i; i++) fs[i] = new Point(0,0);
+        for(let i = 0; vertices.length > i; i++){
+            const v1 = vertices[i];
+            for(let j = 0; vertices.length > j; j++){
+                if(i === j) continue;
+                const v2 = vertices[j],len=Math.sqrt(Math.pow(v1.pos.x - v2.pos.x,2) + Math.pow(v1.pos.y - v2.pos.y,2)),
+                 f = coulomb / (len*len);
+                fs[i].add(new Point(f * (v1.pos.x-v2.pos.x)/len,f * (v1.pos.y-v2.pos.y)/len));
+            }
+        }
+
+        for(let i = 0; edges.length > i; i++){
+            const v1 =vertices[edges[i].from], v2 = vertices[edges[i].to],
+             len = Math.sqrt(Math.pow(v1.pos.x - v2.pos.x,2) + Math.pow(v1.pos.y - v2.pos.y,2)),
+             f = spring * (len - naturalLen);
+            fs[edges[i].to].add(new Point(f * (v1.pos.x-v2.pos.x)/len, f * (v1.pos.y-v2.pos.y)/len));
+            fs[edges[i].from].add(new Point(f * (v2.pos.x-v1.pos.x)/len, f *(v2.pos.y-v1.pos.y)/len));
+        }
+
+        for(let i = 0; vertices.length > i; i++){
+            vertices[i].velocity.add(new Point(deltaT*fs[i].x,deltaT*fs[i].y));
+            vertices[i].velocity.mul(0.95);
+            vertices[i].pos.add(new Point(deltaT*vertices[i].velocity.x,deltaT*vertices[i].velocity.y));
+        }
+        this.setState({
+            vertices:vertices
+        });
+    }
+
     static getRandomVertexPos(nOfVertices, width, height){
         const vertices = [];
         for(let i = 0; nOfVertices > i; i++){
@@ -105,8 +151,9 @@ class Graph extends React.Component {
         this.setState({dragBeforePos: new Point(e.pageX, e.pageY)});
     }
     handleReleaseVertex(){
-        this.state.draggingVertex = null;
-        this.setState({dragBeforePos: null});
+        this.setState({
+            draggingVertex :null,
+            dragBeforePos: null});
     }
     render(){
         return (
